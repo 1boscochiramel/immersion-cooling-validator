@@ -1,0 +1,10 @@
+include LICENSE
+include README.md
+include pyproject.toml
+recursive-include src *.py
+recursive-include tests *.py
+recursive-include examples *.py
+recursive-include web *.py *.html *.css *.js
+prune **/__pycache__
+prune **/*.pyc
+prune .github

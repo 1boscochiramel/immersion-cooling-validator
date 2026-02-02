@@ -1,0 +1,17 @@
+# Immersion Cooling Validator - Web Backend Requirements
+
+# FastAPI framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+
+# Core ICV dependencies
+numpy>=1.21.0
+scipy>=1.7.0
+
+# Optional: for production deployment
+gunicorn>=21.2.0
+
+# Optional: for development
+httpx>=0.25.0  # For testing
+python-multipart>=0.0.6  # For file uploads

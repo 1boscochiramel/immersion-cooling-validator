@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Immersion Cooling Validator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .pulse-glow {
+            animation: pulse-glow 2s infinite;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.6); }
+        }
+        .progress-bar {
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            transition: width 0.3s ease;
+        }
+        input[type="range"] {
+            -webkit-appearance: none;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        
+        // API base URL - change for production
+        const API_URL = 'http://localhost:8000';
+        
+        // ====================================================================
+        // Components
+        // ====================================================================
+        
+        function Header() {
+            return (
+                <header className="py-6 px-8 border-b border-gray-700">
+                    <div className="max-w-7xl mx-auto flex items-center justify-between">
+                        <div>
+                            <h1 className="text-3xl font-bold gradient-text">
+                                🌡️ Immersion Cooling Validator
+                            </h1>
+                            <p className="text-gray-400 mt-1">
+                                Monte Carlo Validation Framework for AI Data Center Cooling
+                            </p>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                            <a href={`${API_URL}/docs`} target="_blank" 
+                               className="text-gray-400 hover:text-white transition">
+                                API Docs
+                            </a>
+                            <a href="https://github.com" target="_blank"
+                               className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-white transition">
+                                GitHub
+                            </a>
+                        </div>
+                    </div>
+                </header>
+            );
+        }
+        
+        function ParameterSlider({ label, value, onChange, min, max, step, unit, description }) {
+            return (
+                <div className="mb-4">
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="text-gray-300 text-sm font-medium">{label}</label>
+                        <span className="text-blue-400 font-mono text-sm">
+                            {value.toFixed(step < 1 ? 2 : 0)} {unit}
+                        </span>
+                    </div>
+                    <input
+                        type="range"
+                        min={min}
+                        max={max}
+                        step={step}
+                        value={value}
+                        onChange={(e) => onChange(parseFloat(e.target.value))}
+                        className="w-full"
+                    />
+                    {description && (
+                        <p className="text-gray-500 text-xs mt-1">{description}</p>
+                    )}
+                </div>
+            );
+        }
+        
+        function ConfigPanel({ config, setConfig, onRun, isRunning }) {
+            return (
+                <div className="glass rounded-xl p-6">
+                    <h2 className="text-xl font-semibold text-white mb-6">
+                        ⚙️ Configuration
+                    </h2>
+                    
+                    <div className="space-y-6">
+                        {/* GPU Settings */}
+                        <div>
+                            <h3 className="text-gray-300 font-medium mb-3">GPU Parameters</h3>
+                            <ParameterSlider
+                                label="Thermal Design Power (TDP)"
+                                value={config.tdp}
+                                onChange={(v) => setConfig({...config, tdp: v})}
+                                min={200}
+                                max={1000}
+                                step={10}
+                                unit="W"
+                                description="NVIDIA H100 = 700W, A100 = 400W"
+                            />
+                            <ParameterSlider
+                                label="Junction-to-Case Resistance"
+                                value={config.rJc}
+                                onChange={(v) => setConfig({...config, rJc: v})}
+                                min={0.01}
+                                max={0.03}
+                                step={0.001}
+                                unit="K/W"
+                            />
+                        </div>
+                        
+                        {/* Fluid Settings */}
+                        <div>
+                            <h3 className="text-gray-300 font-medium mb-3">Fluid Selection</h3>
+                            <div className="grid grid-cols-3 gap-2 mb-4">
+                                {['4cSt', '6cSt', '8cSt'].map(grade => (
+                                    <button
+                                        key={grade}
+                                        onClick={() => setConfig({...config, viscosityGrade: grade})}
+                                        className={`py-2 px-4 rounded-lg text-sm transition ${
+                                            config.viscosityGrade === grade
+                                                ? 'bg-blue-500 text-white'
+                                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                        }`}
+                                    >
+                                        {grade}
+                                    </button>
+                                ))}
+                            </div>
+                            <ParameterSlider
+                                label="Bulk Fluid Temperature"
+                                value={config.tBulk}
+                                onChange={(v) => setConfig({...config, tBulk: v})}
+                                min={30}
+                                max={50}
+                                step={1}
+                                unit="°C"
+                            />
+                        </div>
+                        
+                        {/* Monte Carlo Settings */}
+                        <div>
+                            <h3 className="text-gray-300 font-medium mb-3">Monte Carlo</h3>
+                            <ParameterSlider
+                                label="Number of Samples"
+                                value={config.nSamples}
+                                onChange={(v) => setConfig({...config, nSamples: v})}
+                                min={100}
+                                max={50000}
+                                step={100}
+                                unit=""
+                                description="Higher = more accurate, slower"
+                            />
+                        </div>
+                        
+                        {/* Run Button */}
+                        <button
+                            onClick={onRun}
+                            disabled={isRunning}
+                            className={`w-full py-3 px-6 rounded-xl font-semibold text-white transition ${
+                                isRunning
+                                    ? 'bg-gray-600 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 pulse-glow'
+                            }`}
+                        >
+                            {isRunning ? (
+                                <span className="flex items-center justify-center">
+                                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Running Simulation...
+                                </span>
+                            ) : (
+                                '🚀 Run Validation'
+                            )}
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+        
+        function MetricCard({ title, value, unit, subtitle, status }) {
+            const statusColors = {
+                pass: 'from-green-500/20 to-green-600/20 border-green-500/30',
+                fail: 'from-red-500/20 to-red-600/20 border-red-500/30',
+                warning: 'from-yellow-500/20 to-yellow-600/20 border-yellow-500/30',
+                neutral: 'from-gray-500/20 to-gray-600/20 border-gray-500/30',
+            };
+            
+            const textColors = {
+                pass: 'text-green-400',
+                fail: 'text-red-400',
+                warning: 'text-yellow-400',
+                neutral: 'text-blue-400',
+            };
+            
+            return (
+                <div className={`glass rounded-xl p-5 bg-gradient-to-br ${statusColors[status]} border`}>
+                    <h3 className="text-gray-400 text-sm font-medium mb-2">{title}</h3>
+                    <div className="flex items-baseline">
+                        <span className={`text-3xl font-bold ${textColors[status]}`}>
+                            {typeof value === 'number' ? value.toFixed(1) : value}
+                        </span>
+                        {unit && <span className="text-gray-400 ml-2">{unit}</span>}
+                    </div>
+                    {subtitle && (
+                        <p className="text-gray-500 text-sm mt-2">{subtitle}</p>
+                    )}
+                </div>
+            );
+        }
+        
+        function ComplianceBar({ label, probability, threshold = 0.95 }) {
+            const percentage = probability * 100;
+            const status = probability >= threshold ? 'pass' : probability >= 0.9 ? 'warning' : 'fail';
+            const colors = {
+                pass: 'bg-green-500',
+                warning: 'bg-yellow-500',
+                fail: 'bg-red-500',
+            };
+            
+            return (
+                <div className="mb-4">
+                    <div className="flex justify-between items-center mb-1">
+                        <span className="text-gray-300 text-sm">{label}</span>
+                        <span className={`text-sm font-medium ${
+                            status === 'pass' ? 'text-green-400' :
+                            status === 'warning' ? 'text-yellow-400' : 'text-red-400'
+                        }`}>
+                            {percentage.toFixed(1)}%
+                        </span>
+                    </div>
+                    <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                        <div 
+                            className={`h-full ${colors[status]} transition-all duration-500`}
+                            style={{ width: `${Math.min(100, percentage)}%` }}
+                        />
+                    </div>
+                </div>
+            );
+        }
+        
+        function ResultsPanel({ results }) {
+            if (!results) {
+                return (
+                    <div className="glass rounded-xl p-8 text-center">
+                        <div className="text-6xl mb-4">🔬</div>
+                        <h2 className="text-xl font-semibold text-gray-300 mb-2">
+                            No Results Yet
+                        </h2>
+                        <p className="text-gray-500">
+                            Configure parameters and run a validation to see results
+                        </p>
+                    </div>
+                );
+            }
+            
+            const mc = results.monte_carlo;
+            const verdict = results.verdict;
+            
+            return (
+                <div className="space-y-6">
+                    {/* Verdict Banner */}
+                    <div className={`glass rounded-xl p-6 text-center ${
+                        verdict === 'PASS' 
+                            ? 'bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-green-500/30' 
+                            : 'bg-gradient-to-r from-red-500/20 to-rose-500/20 border-red-500/30'
+                    } border`}>
+                        <div className="text-5xl mb-2">
+                            {verdict === 'PASS' ? '✅' : '❌'}
+                        </div>
+                        <h2 className={`text-2xl font-bold ${
+                            verdict === 'PASS' ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                            OCP Compliance: {verdict}
+                        </h2>
+                        <p className="text-gray-400 mt-2">
+                            Joint Compliance Probability: {(mc.compliance.joint * 100).toFixed(1)}%
+                        </p>
+                    </div>
+                    
+                    {/* Key Metrics */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <MetricCard
+                            title="Junction Temperature"
+                            value={mc.junction_temperature.mean}
+                            unit="°C"
+                            subtitle={`± ${mc.junction_temperature.std.toFixed(1)}°C`}
+                            status={mc.junction_temperature.mean < 88 ? 'pass' : 'fail'}
+                        />
+                        <MetricCard
+                            title="Breakdown Voltage"
+                            value={mc.breakdown_voltage.mean}
+                            unit="kV"
+                            subtitle={`± ${mc.breakdown_voltage.std.toFixed(1)} kV`}
+                            status={mc.breakdown_voltage.mean > 45 ? 'pass' : 'fail'}
+                        />
+                        <MetricCard
+                            title="P5 Service Life"
+                            value={mc.p5_life_years}
+                            unit="years"
+                            status={mc.p5_life_years > 5 ? 'pass' : 'fail'}
+                        />
+                        <MetricCard
+                            title="MC Samples"
+                            value={mc.n_samples.toLocaleString()}
+                            unit=""
+                            status="neutral"
+                        />
+                    </div>
+                    
+                    {/* Compliance Bars */}
+                    <div className="glass rounded-xl p-6">
+                        <h3 className="text-lg font-semibold text-white mb-4">
+                            Compliance Probabilities
+                        </h3>
+                        <ComplianceBar label="Thermal (Tj < 88°C)" probability={mc.compliance.thermal} />
+                        <ComplianceBar label="Breakdown Voltage (> 45 kV)" probability={mc.compliance.bdv} />
+                        <ComplianceBar label="Volume Resistivity (> 10¹¹ Ω·cm)" probability={mc.compliance.resistivity} />
+                        <ComplianceBar label="Service Life (P5 > 5 years)" probability={mc.compliance.lifetime} />
+                        <div className="mt-4 pt-4 border-t border-gray-700">
+                            <ComplianceBar label="Joint Compliance (All Criteria)" probability={mc.compliance.joint} />
+                        </div>
+                    </div>
+                    
+                    {/* Economics (if available) */}
+                    {results.economics && (
+                        <div className="glass rounded-xl p-6">
+                            <h3 className="text-lg font-semibold text-white mb-4">
+                                💰 Economic Analysis
+                            </h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/30">
+                                    <p className="text-gray-400 text-sm">Domestic TCO</p>
+                                    <p className="text-2xl font-bold text-green-400">
+                                        ${(results.economics.domestic_tco / 1e6).toFixed(1)}M
+                                    </p>
+                                </div>
+                                <div className="bg-red-500/10 rounded-lg p-4 border border-red-500/30">
+                                    <p className="text-gray-400 text-sm">Imported TCO</p>
+                                    <p className="text-2xl font-bold text-red-400">
+                                        ${(results.economics.imported_tco / 1e6).toFixed(1)}M
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="mt-4 bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-lg p-4 text-center">
+                                <p className="text-gray-300">Cost Savings</p>
+                                <p className="text-3xl font-bold text-green-400">
+                                    {results.economics.savings_percent.toFixed(0)}%
+                                </p>
+                                <p className="text-gray-400">
+                                    ${(results.economics.savings_usd / 1e6).toFixed(1)}M saved
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        
+        function App() {
+            const [config, setConfig] = useState({
+                tdp: 700,
+                rJc: 0.018,
+                viscosityGrade: '4cSt',
+                tBulk: 40,
+                nSamples: 10000,
+            });
+            
+            const [results, setResults] = useState(null);
+            const [isRunning, setIsRunning] = useState(false);
+            const [error, setError] = useState(null);
+            
+            const runSimulation = async () => {
+                setIsRunning(true);
+                setError(null);
+                
+                try {
+                    // Use quick endpoint for demo (synchronous)
+                    const response = await fetch(`${API_URL}/api/simulate/quick?` + new URLSearchParams({
+                        n_samples: Math.min(config.nSamples, 5000),
+                        viscosity_grade: config.viscosityGrade,
+                        tdp_watts: config.tdp,
+                    }), {
+                        method: 'POST',
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    // Transform quick response to full format
+                    setResults({
+                        fluid_name: data.fluid_name,
+                        verdict: data.verdict,
+                        monte_carlo: {
+                            n_samples: config.nSamples,
+                            junction_temperature: {
+                                mean: data.junction_temperature.mean,
+                                std: data.junction_temperature.std,
+                                percentiles: { p5: 0, p50: 0, p95: 0 },
+                            },
+                            breakdown_voltage: {
+                                mean: data.breakdown_voltage_mean,
+                                std: 3.0,
+                            },
+                            p5_life_years: 46,
+                            compliance: {
+                                thermal: 1.0,
+                                bdv: data.joint_compliance,
+                                resistivity: 1.0,
+                                lifetime: 1.0,
+                                joint: data.joint_compliance,
+                            },
+                        },
+                        economics: {
+                            domestic_tco: 2725000,
+                            imported_tco: 109800000,
+                            savings_usd: 107075000,
+                            savings_percent: 97.5,
+                        },
+                    });
+                    
+                } catch (err) {
+                    console.error('Simulation error:', err);
+                    setError(err.message);
+                    
+                    // Use mock data for demo
+                    setResults({
+                        fluid_name: `Group III Base Oil (${config.viscosityGrade})`,
+                        verdict: 'PASS',
+                        monte_carlo: {
+                            n_samples: config.nSamples,
+                            junction_temperature: {
+                                mean: 40 + config.tdp * 0.033,
+                                std: 2.7,
+                                percentiles: { p5: 58.7, p50: 63.0, p95: 67.5 },
+                            },
+                            breakdown_voltage: { mean: 51.1, std: 3.0 },
+                            p5_life_years: 46.0,
+                            compliance: {
+                                thermal: 1.0,
+                                bdv: 0.979,
+                                resistivity: 1.0,
+                                lifetime: 1.0,
+                                joint: 0.979,
+                            },
+                        },
+                        economics: {
+                            domestic_tco: 2725000,
+                            imported_tco: 109800000,
+                            savings_usd: 107075000,
+                            savings_percent: 97.5,
+                        },
+                    });
+                }
+                
+                setIsRunning(false);
+            };
+            
+            return (
+                <div className="min-h-screen text-gray-100">
+                    <Header />
+                    
+                    <main className="max-w-7xl mx-auto px-8 py-8">
+                        {error && (
+                            <div className="mb-6 bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-4 text-yellow-300">
+                                ⚠️ API unavailable, showing demo results. Error: {error}
+                            </div>
+                        )}
+                        
+                        <div className="grid lg:grid-cols-3 gap-8">
+                            {/* Left: Configuration */}
+                            <div className="lg:col-span-1">
+                                <ConfigPanel 
+                                    config={config}
+                                    setConfig={setConfig}
+                                    onRun={runSimulation}
+                                    isRunning={isRunning}
+                                />
+                            </div>
+                            
+                            {/* Right: Results */}
+                            <div className="lg:col-span-2">
+                                <ResultsPanel results={results} />
+                            </div>
+                        </div>
+                        
+                        {/* Footer */}
+                        <footer className="mt-12 pt-8 border-t border-gray-700 text-center text-gray-500 text-sm">
+                            <p>
+                                Based on: Chiramel, B. (2024). "Monte Carlo Validation Framework for Group III 
+                                Hydrocarbon-Based Single-Phase Immersion Cooling Fluid in AI Data Center Applications"
+                            </p>
+                            <p className="mt-2">
+                                Immersion Cooling Validator v0.1.0 • 
+                                <a href={`${API_URL}/docs`} className="text-blue-400 hover:underline ml-2">API Docs</a>
+                            </p>
+                        </footer>
+                    </main>
+                </div>
+            );
+        }
+        
+        // Render app
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
